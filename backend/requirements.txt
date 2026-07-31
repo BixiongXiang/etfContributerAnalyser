@@ -1,0 +1,27 @@
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+
+# Database
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+
+# Data
+yfinance==0.2.50
+pandas==2.2.3
+
+# Scheduler
+apscheduler==3.10.4
+exchange-calendars==4.5.5
+
+# HTTP client (for holdings CSV downloads)
+httpx==0.28.1
+
+# Settings / config
+pydantic-settings==2.6.1
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+httpx==0.28.1

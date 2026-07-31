@@ -1,0 +1,49 @@
+/**
+ * Shared TypeScript types — mirrors the FastAPI response shapes.
+ * Import from @/lib/types throughout the frontend.
+ */
+
+export interface ETFSummary {
+  symbol: string;
+  name: string;
+  last_updated: string | null; // ISO datetime string
+  today_return_pct: number | null;
+}
+
+export interface ContributorRow {
+  symbol: string;
+  company_name: string;
+  weight: number;       // %, e.g. 8.2
+  return_pct: number;   // %, e.g. -3.1
+  contribution: number; // percentage points, e.g. -0.254
+  sector: string | null;
+  pct_of_total_move: number; // %, e.g. 20.5
+}
+
+export interface SectorRow {
+  sector: string;
+  contribution: number;       // pp
+  pct_of_total_move: number;  // %
+  num_stocks: number;
+}
+
+export interface AttributionResponse {
+  etf: string;
+  date: string; // YYYY-MM-DD
+  etf_return_pct: number;
+  data_as_of: string; // ISO datetime
+  top_negative: ContributorRow[];
+  top_positive: ContributorRow[];
+  sector_attribution: SectorRow[];
+}
+
+export interface SummaryResponse {
+  etf: string;
+  date: string;
+  summary: string;
+}
+
+export interface HealthResponse {
+  status: string;
+  timestamp: string;
+}
