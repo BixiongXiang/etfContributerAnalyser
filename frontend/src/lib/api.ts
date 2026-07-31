@@ -40,6 +40,13 @@ export async function fetchAttribution(
   return get<AttributionResponse>(`/attribution/${symbol}${qs}`);
 }
 
+/** Fetch live intraday attribution. Falls back to latest close outside market hours. */
+export async function fetchLiveAttribution(
+  symbol: string
+): Promise<AttributionResponse> {
+  return get<AttributionResponse>(`/attribution/${symbol}/live`);
+}
+
 /** Fetch the rule-based text summary for an ETF. */
 export async function fetchSummary(
   symbol: string,

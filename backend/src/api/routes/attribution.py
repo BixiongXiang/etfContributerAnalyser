@@ -150,6 +150,131 @@ async def get_attribution(
     )
 
 
+@router.get("/attribution/{symbol}/live", response_model=AttributionResponse)
+async def get_live_attribution(
+    symbol: str,
+    top_n: int = Query(default=10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return intraday attribution using current market prices.
+
+    Fetches live quotes from Yahoo Finance and computes contribution against
+    yesterday's closing prices stored in the DB.
+
+    Outside market hours, falls back to the latest stored (end-of-day) attribution.
+    """
+    from src.core.market_hours import market_status
+    from src.providers.factory import get_price_provider
+    from src.core.attribution import calculate_attribution
+    from src.providers.base import HoldingRecord as HR
+    from src.models.models import Holding
+    from datetime import datetime, timezone, timedelta
+
+    symbol = symbol.upper()
+    status = market_status()
+
+    # Outside market hours — return latest stored attribution
+    if not status["is_open"]:
+        resp = await get_attribution(symbol=symbol, date=None, top_n=top_n, db=db)
+        # Patch the response to include market status
+        return resp
+
+    # --- Live path: fetch intraday prices ---
+    # Load latest holdings from DB
+    result = await db.execute(
+        select(Holding)
+        .where(Holding.etf_symbol == symbol)
+        .order_by(Holding.as_of_date.desc())
+    )
+    all_holdings = result.scalars().all()
+    if not all_holdings:
+        raise HTTPException(status_code=404, detail=f"No holdings for {symbol}. Run /api/admin/backfill first.")
+
+    latest_date = max(h.as_of_date for h in all_holdings)
+    current_holdings = [h for h in all_holdings if h.as_of_date == latest_date]
+
+    # Fetch today's intraday prices + yesterday's close
+    price_provider = get_price_provider()
+    today = datetime.now(timezone.utc).date()
+    symbols = [h.symbol for h in current_holdings] + [symbol]
+
+    price_records = await price_provider.get_daily_prices(
+        symbols=symbols,
+        start=today - timedelta(days=5),  # buffer for prev_close
+        end=today,
+    )
+
+    # Build (current_price, prev_close) pairs
+    price_by_symbol: dict[str, dict] = {}
+    for pr in price_records:
+        price_by_symbol.setdefault(pr.symbol, {})[pr.date] = pr.close
+
+    prices: dict[str, tuple[float, float]] = {}
+    for sym, date_prices in price_by_symbol.items():
+        sorted_dates = sorted(date_prices.keys())
+        if today not in date_prices or len(sorted_dates) < 2:
+            continue
+        prev_dates = [d for d in sorted_dates if d < today]
+        if not prev_dates:
+            continue
+        prices[sym] = (date_prices[today], date_prices[prev_dates[-1]])
+
+    if len(prices) < len(current_holdings) * 0.5:
+        # Not enough live data — fall back to stored
+        return await get_attribution(symbol=symbol, date=None, top_n=top_n, db=db)
+
+    holding_list = [
+        HR(symbol=h.symbol, company_name=h.company_name, weight=h.weight, sector=h.sector)
+        for h in current_holdings
+    ]
+    attributions = calculate_attribution(holding_list, prices)
+    etf_return = sum(a.contribution for a in attributions)
+
+    def to_contributor(a) -> ContributorRow:
+        pct = (a.contribution / etf_return * 100) if etf_return != 0 else 0.0
+        return ContributorRow(
+            symbol=a.symbol,
+            company_name=a.company_name,
+            weight=round(a.weight, 4),
+            return_pct=round(a.return_pct, 4),
+            contribution=round(a.contribution, 6),
+            sector=a.sector,
+            pct_of_total_move=round(pct, 2),
+        )
+
+    all_contributors = [to_contributor(a) for a in attributions]
+    negatives = sorted([c for c in all_contributors if c.contribution < 0], key=lambda x: x.contribution)[:top_n]
+    positives = sorted([c for c in all_contributors if c.contribution > 0], key=lambda x: -x.contribution)[:top_n]
+
+    sector_map: dict[str, dict] = {}
+    for a in attributions:
+        sec = a.sector or "Unknown"
+        sector_map.setdefault(sec, {"contribution": 0.0, "count": 0})
+        sector_map[sec]["contribution"] += a.contribution
+        sector_map[sec]["count"] += 1
+
+    sector_rows = sorted([
+        SectorRow(
+            sector=s,
+            contribution=round(v["contribution"], 6),
+            pct_of_total_move=round((v["contribution"] / etf_return * 100) if etf_return != 0 else 0.0, 2),
+            num_stocks=v["count"],
+        )
+        for s, v in sector_map.items()
+    ], key=lambda x: abs(x.contribution), reverse=True)
+
+    return AttributionResponse(
+        etf=symbol,
+        date=str(today),
+        etf_return_pct=round(etf_return, 4),
+        data_as_of=datetime.now(timezone.utc).isoformat(),
+        top_negative=negatives,
+        top_positive=positives,
+        sector_attribution=sector_rows,
+    )
+
+
 @router.get("/attribution/{symbol}/history")
 async def get_attribution_history(
     symbol: str,
