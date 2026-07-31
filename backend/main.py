@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import settings
-from src.api.routes import etfs, attribution, summary, health
+from src.api.routes import etfs, attribution, summary, health, admin
 from src.models.database import init_db
 
 logging.basicConfig(
@@ -61,3 +61,4 @@ app.include_router(health.router, tags=["health"])
 app.include_router(etfs.router, prefix="/api", tags=["etfs"])
 app.include_router(attribution.router, prefix="/api", tags=["attribution"])
 app.include_router(summary.router, prefix="/api", tags=["summary"])
+app.include_router(admin.router, prefix="/api", tags=["admin"])

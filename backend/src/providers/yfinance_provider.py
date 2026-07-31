@@ -1,35 +1,48 @@
 """
-yfinance data provider — fetches market prices using the free Yahoo Finance API.
+Yahoo Finance price provider — fetches market prices directly from the
+Yahoo Finance chart API (v8/finance/chart) using the requests library.
 
-Key design decisions:
-- Uses yf.download() in batch mode to fetch all symbols in one API call,
-  dramatically reducing round-trips (important for VOO with ~500 holdings).
-- Falls back to individual symbol downloads if the batch call fails.
-- Returns only adjusted close prices; OHLC is also captured when available.
+Why requests instead of httpx or yfinance:
+  - requests with a minimal User-Agent header avoids the 429 rate limiting
+    that httpx triggers due to different default headers
+  - yfinance's crumb management is fragile and frequently breaks
+  - The v8 chart API is stable and returns adjusted OHLC data
+
+Concurrency: runs blocking requests.get calls in a thread pool via
+asyncio.run_in_executor so the FastAPI event loop is not blocked.
 """
 
+import asyncio
 import logging
-from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta, datetime, timezone
+from typing import Optional
 
-import pandas as pd
-import yfinance as yf
+import requests
 
 from src.providers.base import DataProvider, HoldingRecord, PriceRecord
 
 logger = logging.getLogger(__name__)
 
-# yfinance batch size — stay well under the undocumented ~1000-symbol limit
-_BATCH_SIZE = 200
+_CHART_URLS = [
+    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+    "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}",
+]
+
+_SESSION = requests.Session()
+_SESSION.headers.update({"User-Agent": "Mozilla/5.0"})
+
+_MAX_WORKERS = 8       # thread pool size for concurrent fetches
+_BATCH_SIZE = 50       # symbols per asyncio.gather batch
 
 
 class YFinanceProvider(DataProvider):
-    """Implements DataProvider using the yfinance library (free, no API key)."""
+    """Price provider using the Yahoo Finance chart API via requests."""
+
+    def __init__(self) -> None:
+        self._executor = ThreadPoolExecutor(max_workers=_MAX_WORKERS)
 
     async def get_holdings(self, etf_symbol: str) -> tuple[list[HoldingRecord], date]:
-        """
-        Holdings are sourced from provider-specific parsers, not yfinance.
-        This method is not used — the holdings/ sub-package handles each ETF.
-        """
         raise NotImplementedError(
             "YFinanceProvider does not supply holdings. "
             "Use the provider-specific holdings parser instead."
@@ -42,108 +55,128 @@ class YFinanceProvider(DataProvider):
         end: date,
     ) -> list[PriceRecord]:
         """
-        Download adjusted closing prices for all symbols over the date range.
-
-        Uses batch downloads (up to _BATCH_SIZE symbols per call) to minimise
-        API round-trips. The end date passed to yfinance is exclusive, so we
-        add one day to match our inclusive API contract.
+        Fetch daily closing prices for all symbols using a thread pool.
         """
         if not symbols:
             return []
 
         all_records: list[PriceRecord] = []
 
-        # Process in batches
+        # Process in batches to avoid overwhelming the thread pool
         for i in range(0, len(symbols), _BATCH_SIZE):
             batch = symbols[i : i + _BATCH_SIZE]
-            records = await self._download_batch(batch, start, end)
-            all_records.extend(records)
+            tasks = [
+                self._fetch_in_thread(sym, start, end)
+                for sym in batch
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for sym, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    logger.debug("Price fetch failed for %s: %s", sym, result)
+                elif result:
+                    all_records.extend(result)
 
         logger.info(
-            "yfinance: fetched %d price records for %d symbols (%s → %s)",
-            len(all_records),
-            len(symbols),
-            start,
-            end,
+            "Yahoo Finance: fetched %d price records for %d symbols (%s → %s)",
+            len(all_records), len(symbols), start, end,
         )
         return all_records
 
-    async def _download_batch(
-        self,
-        symbols: list[str],
-        start: date,
-        end: date,
+    async def _fetch_in_thread(
+        self, symbol: str, start: date, end: date
     ) -> list[PriceRecord]:
-        """Download one batch of symbols, return PriceRecord list."""
-        # yfinance end is exclusive
-        yf_end = end + timedelta(days=1)
-
-        try:
-            df = yf.download(
-                tickers=symbols,
-                start=str(start),
-                end=str(yf_end),
-                auto_adjust=True,   # gives adjusted OHLC directly
-                progress=False,
-                threads=True,
-            )
-        except Exception as exc:
-            logger.error("yfinance batch download failed for %d symbols: %s", len(symbols), exc)
-            return []
-
-        if df.empty:
-            logger.warning("yfinance returned empty DataFrame for batch of %d symbols", len(symbols))
-            return []
-
-        return _parse_yfinance_df(df, symbols)
-
-
-def _parse_yfinance_df(df: pd.DataFrame, symbols: list[str]) -> list[PriceRecord]:
-    """
-    Convert a yfinance multi-symbol DataFrame to a list of PriceRecord.
-
-    yfinance returns a MultiIndex DataFrame when multiple symbols are requested:
-        columns: (price_type, symbol)
-        index:   DatetimeIndex
-
-    For a single symbol it returns a flat DataFrame with price_type columns.
-    We normalise both shapes here.
-    """
-    records: list[PriceRecord] = []
-
-    if isinstance(df.columns, pd.MultiIndex):
-        # Multi-symbol download
-        for symbol in symbols:
-            symbol_upper = symbol.upper()
-            try:
-                sym_df = df.xs(symbol_upper, axis=1, level=1)
-            except KeyError:
-                logger.debug("yfinance: no data for symbol %s", symbol)
-                continue
-            records.extend(_rows_to_records(sym_df, symbol_upper))
-    else:
-        # Single-symbol download
-        if len(symbols) == 1:
-            records.extend(_rows_to_records(df, symbols[0].upper()))
-
-    return records
-
-
-def _rows_to_records(df: pd.DataFrame, symbol: str) -> list[PriceRecord]:
-    """Convert a single-symbol price DataFrame to PriceRecord list."""
-    records = []
-    for ts, row in df.iterrows():
-        close = row.get("Close")
-        if close is None or pd.isna(close):
-            continue
-        records.append(
-            PriceRecord(
-                symbol=symbol,
-                date=ts.date(),
-                close=float(close),
-                open=float(row["Open"]) if not pd.isna(row.get("Open", float("nan"))) else None,
-                high=float(row["High"]) if not pd.isna(row.get("High", float("nan"))) else None,
-                low=float(row["Low"]) if not pd.isna(row.get("Low", float("nan"))) else None,
-            )
+        """Run the blocking HTTP call in a thread pool executor."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            self._executor,
+            _fetch_symbol_sync,
+            symbol,
+            start,
+            end,
         )
-    return records
+
+
+def _fetch_symbol_sync(symbol: str, start: date, end: date) -> list[PriceRecord]:
+    """Synchronous fetch for one symbol — runs in a thread."""
+    start_ts = int(datetime(start.year, start.month, start.day, tzinfo=timezone.utc).timestamp())
+    end_ts = int(datetime(
+        (end + timedelta(days=1)).year,
+        (end + timedelta(days=1)).month,
+        (end + timedelta(days=1)).day,
+        tzinfo=timezone.utc,
+    ).timestamp())
+
+    params = {
+        "interval": "1d",
+        "period1": start_ts,
+        "period2": end_ts,
+        "events": "div,splits",
+        "includePrePost": "false",
+    }
+
+    for url_template in _CHART_URLS:
+        try:
+            url = url_template.format(symbol=symbol)
+            resp = _SESSION.get(url, params=params, timeout=15)
+            if resp.status_code == 404:
+                continue
+            if resp.status_code == 429:
+                logger.warning("Rate limited for %s (429) — will retry next backfill.", symbol)
+                return []
+            resp.raise_for_status()
+            records = _parse_chart_response(resp.json(), symbol)
+            if records:
+                return records
+        except requests.RequestException as exc:
+            logger.debug("Request failed for %s: %s", symbol, exc)
+
+    return []
+
+
+def _parse_chart_response(data: dict, symbol: str) -> list[PriceRecord]:
+    """Parse the Yahoo Finance v8 chart API JSON response."""
+    try:
+        result = data["chart"]["result"]
+        if not result:
+            return []
+
+        chart = result[0]
+        timestamps = chart.get("timestamp", [])
+        quotes = chart.get("indicators", {}).get("quote", [{}])[0]
+
+        # Prefer adjusted close if available
+        adj_close_data = chart.get("indicators", {}).get("adjclose", [])
+        adj_closes = adj_close_data[0].get("adjclose", []) if adj_close_data else []
+        closes_raw = adj_closes if adj_closes else quotes.get("close", [])
+
+        opens_raw = quotes.get("open", [])
+        highs_raw = quotes.get("high", [])
+        lows_raw = quotes.get("low", [])
+
+        records: list[PriceRecord] = []
+        for i, ts in enumerate(timestamps):
+            close = _safe_float(closes_raw, i)
+            if close is None:
+                continue
+            records.append(PriceRecord(
+                symbol=symbol.upper(),
+                date=datetime.fromtimestamp(ts, tz=timezone.utc).date(),
+                close=close,
+                open=_safe_float(opens_raw, i),
+                high=_safe_float(highs_raw, i),
+                low=_safe_float(lows_raw, i),
+            ))
+
+        return records
+
+    except (KeyError, IndexError, TypeError) as exc:
+        logger.debug("Failed to parse chart response for %s: %s", symbol, exc)
+        return []
+
+
+def _safe_float(lst: list, i: int) -> Optional[float]:
+    try:
+        v = lst[i]
+        return float(v) if v is not None else None
+    except (IndexError, TypeError, ValueError):
+        return None

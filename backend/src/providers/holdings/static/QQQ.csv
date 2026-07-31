@@ -1,0 +1,100 @@
+symbol,company_name,sector,weight,as_of_date
+NVDA,NVIDIA Corp,Information Technology,10.0186,2026-07-30
+AAPL,Apple Inc,Information Technology,9.5764,2026-07-30
+MSFT,Microsoft Corp,Information Technology,9.2041,2026-07-30
+AMZN,Amazon.com Inc,Consumer Discretionary,6.1322,2026-07-30
+META,Meta Platforms Inc,Communication Services,3.933,2026-07-30
+GOOGL,Alphabet Inc Class A,Communication Services,3.1766,2026-07-30
+AVGO,Broadcom Inc,Information Technology,3.0486,2026-07-30
+GOOG,Alphabet Inc Class C,Communication Services,3.0021,2026-07-30
+TSLA,Tesla Inc,Consumer Discretionary,2.8625,2026-07-30
+COST,Costco Wholesale Corp,Consumer Staples,2.8392,2026-07-30
+NFLX,Netflix Inc,Communication Services,2.0014,2026-07-30
+AMD,Advanced Micro Devices,Information Technology,1.5127,2026-07-30
+PEP,PepsiCo Inc,Consumer Staples,1.4429,2026-07-30
+TMUS,T-Mobile US Inc,Communication Services,1.3498,2026-07-30
+QCOM,QUALCOMM Inc,Information Technology,1.2451,2026-07-30
+INTU,Intuit Inc,Information Technology,1.2451,2026-07-30
+NOW,ServiceNow Inc,Information Technology,1.2451,2026-07-30
+AMGN,Amgen Inc,Health Care,1.1287,2026-07-30
+TXN,Texas Instruments Inc,Information Technology,1.0822,2026-07-30
+ADBE,Adobe Inc,Information Technology,1.0822,2026-07-30
+CSCO,Cisco Systems Inc,Information Technology,1.024,2026-07-30
+AMAT,Applied Materials Inc,Information Technology,1.024,2026-07-30
+BKNG,Booking Holdings Inc,Consumer Discretionary,0.9891,2026-07-30
+ISRG,Intuitive Surgical Inc,Health Care,0.9542,2026-07-30
+AZN,AstraZeneca PLC,Health Care,0.9309,2026-07-30
+HON,Honeywell International,Industrials,0.8611,2026-07-30
+CRWD,CrowdStrike Holdings,Information Technology,0.8378,2026-07-30
+CMCSA,Comcast Corp,Communication Services,0.8029,2026-07-30
+ADI,Analog Devices Inc,Information Technology,0.7912,2026-07-30
+PANW,Palo Alto Networks Inc,Information Technology,0.7912,2026-07-30
+MU,Micron Technology Inc,Information Technology,0.7796,2026-07-30
+ASML,ASML Holding NV,Information Technology,0.768,2026-07-30
+LRCX,Lam Research Corp,Information Technology,0.7331,2026-07-30
+REGN,Regeneron Pharmaceuticals,Health Care,0.7214,2026-07-30
+KLAC,KLA Corp,Information Technology,0.6633,2026-07-30
+GILD,Gilead Sciences Inc,Health Care,0.6051,2026-07-30
+SBUX,Starbucks Corp,Consumer Discretionary,0.5934,2026-07-30
+VRTX,Vertex Pharmaceuticals,Health Care,0.5702,2026-07-30
+SNPS,Synopsys Inc,Information Technology,0.5585,2026-07-30
+CDNS,Cadence Design Systems,Information Technology,0.5585,2026-07-30
+MELI,MercadoLibre Inc,Consumer Discretionary,0.5469,2026-07-30
+ORLY,O'Reilly Automotive Inc,Consumer Discretionary,0.5236,2026-07-30
+MRVL,Marvell Technology Inc,Information Technology,0.512,2026-07-30
+CTAS,Cintas Corp,Industrials,0.512,2026-07-30
+PYPL,PayPal Holdings Inc,Financials,0.5003,2026-07-30
+MAR,Marriott International,Consumer Discretionary,0.4771,2026-07-30
+MDLZ,Mondelez International,Consumer Staples,0.4422,2026-07-30
+ABNB,Airbnb Inc,Consumer Discretionary,0.4422,2026-07-30
+FTNT,Fortinet Inc,Information Technology,0.4422,2026-07-30
+NXPI,NXP Semiconductors NV,Information Technology,0.4305,2026-07-30
+ROST,Ross Stores Inc,Consumer Discretionary,0.4305,2026-07-30
+PCAR,PACCAR Inc,Industrials,0.4305,2026-07-30
+CSX,CSX Corp,Industrials,0.4305,2026-07-30
+INTC,Intel Corp,Information Technology,0.4189,2026-07-30
+WDAY,Workday Inc,Information Technology,0.4189,2026-07-30
+CEG,Constellation Energy Corp,Utilities,0.4189,2026-07-30
+AEP,American Electric Power,Utilities,0.384,2026-07-30
+PAYX,Paychex Inc,Industrials,0.3607,2026-07-30
+FAST,Fastenal Co,Industrials,0.3491,2026-07-30
+CPRT,Copart Inc,Industrials,0.3491,2026-07-30
+ZS,Zscaler Inc,Information Technology,0.3374,2026-07-30
+DDOG,Datadog Inc,Information Technology,0.3374,2026-07-30
+KDP,Keurig Dr Pepper Inc,Consumer Staples,0.3258,2026-07-30
+ODFL,Old Dominion Freight Line,Industrials,0.3258,2026-07-30
+VRSK,Verisk Analytics Inc,Industrials,0.3258,2026-07-30
+IDXX,IDEXX Laboratories,Health Care,0.3142,2026-07-30
+EA,Electronic Arts Inc,Communication Services,0.3142,2026-07-30
+GEHC,GE HealthCare Technologies,Health Care,0.3025,2026-07-30
+TEAM,Atlassian Corp,Information Technology,0.3025,2026-07-30
+DASH,DoorDash Inc,Consumer Discretionary,0.2909,2026-07-30
+EXC,Exelon Corp,Utilities,0.2793,2026-07-30
+CTSH,Cognizant Technology Solutions,Information Technology,0.2793,2026-07-30
+XEL,Xcel Energy Inc,Utilities,0.2676,2026-07-30
+DXCM,DexCom Inc,Health Care,0.256,2026-07-30
+LULU,Lululemon Athletica,Consumer Discretionary,0.256,2026-07-30
+MNST,Monster Beverage Corp,Consumer Staples,0.256,2026-07-30
+MCHP,Microchip Technology,Information Technology,0.256,2026-07-30
+CCEP,Coca-Cola Europacific Partners,Consumer Staples,0.2444,2026-07-30
+FANG,Diamondback Energy,Energy,0.2444,2026-07-30
+MRNA,Moderna Inc,Health Care,0.2327,2026-07-30
+CDW,CDW Corp,Information Technology,0.2327,2026-07-30
+ON,ON Semiconductor Corp,Information Technology,0.2211,2026-07-30
+ANSS,ANSYS Inc,Information Technology,0.2211,2026-07-30
+MDB,MongoDB Inc,Information Technology,0.2211,2026-07-30
+CSGP,CoStar Group Inc,Real Estate,0.1978,2026-07-30
+TTWO,Take-Two Interactive,Communication Services,0.1862,2026-07-30
+DLTR,Dollar Tree Inc,Consumer Discretionary,0.1862,2026-07-30
+BIIB,Biogen Inc,Health Care,0.1745,2026-07-30
+WBD,Warner Bros Discovery,Communication Services,0.1629,2026-07-30
+ENPH,Enphase Energy Inc,Information Technology,0.1513,2026-07-30
+GFS,GlobalFoundries Inc,Information Technology,0.1396,2026-07-30
+SMCI,Super Micro Computer,Information Technology,0.1396,2026-07-30
+ILMN,Illumina Inc,Health Care,0.128,2026-07-30
+ALGN,Align Technology Inc,Health Care,0.1164,2026-07-30
+SGEN,Seagen Inc,Health Care,0.0931,2026-07-30
+SIRI,Sirius XM Holdings,Communication Services,0.0582,2026-07-30
+WBA,Walgreens Boots Alliance,Consumer Staples,0.0582,2026-07-30
+LCID,Lucid Group Inc,Consumer Discretionary,0.0349,2026-07-30
+RYAM,Rayonier Advanced Materials,Materials,0.0233,2026-07-30

@@ -1,64 +1,86 @@
 """
-SCHD holdings parser — downloads and parses the Schwab daily holdings CSV.
+SCHD holdings parser.
 
-Schwab publishes ETF holdings at:
-    https://www.schwabassetmanagement.com/resource/schd-fund-downloads
-
-The direct CSV download URL is stable and updated daily.
+Strategy:
+  1. Try to download live CSV from Schwab (daily updates)
+  2. Fall back to bundled static CSV on any failure
 """
 
 import io
 import logging
-from datetime import date
+from datetime import date, datetime
 
 import httpx
 import pandas as pd
 
 from src.providers.base import HoldingRecord
+from src.providers.holdings.static_loader import load_static_holdings
 
 logger = logging.getLogger(__name__)
 
-# Schwab SCHD holdings CSV direct download
-_SCHD_URL = "https://www.schwabassetmanagement.com/sites/g/files/pcvezn656/files/2024-02/SCHD_HOldings.csv"
+# Schwab SCHD holdings CSV — URL may need updating periodically
+_SCHD_URLS = [
+    "https://www.schwabassetmanagement.com/sites/g/files/pcvezn656/files/2024-02/SCHD_HOldings.csv",
+    "https://www.schwabassetmanagement.com/resource/schd-fund-downloads",
+]
 
-# Alternate fallback URL format
-_SCHD_URL_ALT = "https://www.schwabassetmanagement.com/resource/schd-fund-downloads"
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/csv, text/plain, */*",
+    "Referer": "https://www.schwabassetmanagement.com/",
+}
 
 
 async def fetch_schd_holdings() -> tuple[list[HoldingRecord], date]:
-    """Download and parse SCHD holdings from Schwab."""
-    logger.info("Fetching SCHD holdings from Schwab…")
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-        resp = await client.get(_SCHD_URL)
-        resp.raise_for_status()
-        raw = resp.text
+    """Fetch SCHD holdings — live Schwab CSV with static file fallback."""
+    try:
+        holdings, as_of = await _fetch_live()
+        if holdings:
+            logger.info("SCHD: using live holdings (%d rows, as of %s)", len(holdings), as_of)
+            return holdings, as_of
+        logger.warning("SCHD: live fetch returned 0 holdings — falling back to static file.")
+    except Exception as exc:
+        logger.warning("SCHD: live fetch failed (%s) — falling back to static file.", exc)
 
-    return _parse_schwab_csv(raw)
+    return load_static_holdings("SCHD")
+
+
+async def _fetch_live() -> tuple[list[HoldingRecord], date]:
+    """Try each known URL until one returns a valid CSV."""
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for url in _SCHD_URLS:
+            try:
+                resp = await client.get(url, headers=_HEADERS)
+                if resp.status_code != 200:
+                    continue
+                raw = resp.text
+                if raw.strip().startswith("<") or "<!DOCTYPE" in raw[:200]:
+                    continue
+                holdings, as_of = _parse_schwab_csv(raw)
+                if holdings:
+                    return holdings, as_of
+            except Exception as exc:
+                logger.debug("SCHD URL %s failed: %s", url, exc)
+
+    raise ValueError("All Schwab URLs failed or returned HTML.")
 
 
 def _parse_schwab_csv(raw: str) -> tuple[list[HoldingRecord], date]:
-    """
-    Parse Schwab CSV text into HoldingRecord list.
-
-    Schwab CSV preamble example:
-        "Schwab U.S. Dividend Equity ETF"
-        "As Of: 07/29/2026"
-        ""
-        "Symbol","Security Name","% of Net Assets","Shares Held","Market Value",...
-    """
+    """Parse Schwab CSV text → (HoldingRecord list, as_of_date)."""
     lines = raw.splitlines()
     header_idx = None
     as_of_date = date.today()
 
     for i, line in enumerate(lines):
         low = line.lower()
-
         if "as of" in low:
             try:
                 date_part = line.split(":", 1)[-1].strip().strip('"').strip()
                 for fmt in ("%m/%d/%Y", "%B %d, %Y"):
                     try:
-                        from datetime import datetime
                         as_of_date = datetime.strptime(date_part, fmt).date()
                         break
                     except ValueError:
@@ -66,17 +88,14 @@ def _parse_schwab_csv(raw: str) -> tuple[list[HoldingRecord], date]:
             except Exception:
                 pass
 
-        # Header row contains "Symbol" and "% of Net Assets" or "Weight"
         if "symbol" in low and ("% of net" in low or "weight" in low):
             header_idx = i
             break
 
     if header_idx is None:
-        logger.error("SCHD CSV: could not find column header row. Raw snippet: %s", raw[:500])
         return [], as_of_date
 
-    csv_body = "\n".join(lines[header_idx:])
-    df = pd.read_csv(io.StringIO(csv_body))
+    df = pd.read_csv(io.StringIO("\n".join(lines[header_idx:])))
     df.columns = [c.strip().strip('"') for c in df.columns]
 
     weight_col = next(
@@ -84,31 +103,26 @@ def _parse_schwab_csv(raw: str) -> tuple[list[HoldingRecord], date]:
         next((c for c in df.columns if "weight" in c.lower()), None),
     )
     if weight_col is None:
-        logger.error("SCHD CSV: cannot identify weight column. Columns: %s", list(df.columns))
         return [], as_of_date
 
     holdings: list[HoldingRecord] = []
     for _, row in df.iterrows():
         ticker = str(row.get("Symbol", "")).strip().strip('"').upper()
-        if not ticker or ticker in ("", "NAN"):
+        if not ticker or ticker.lower() == "nan":
             continue
-
         try:
             weight = float(str(row[weight_col]).replace("%", "").strip())
         except (ValueError, TypeError):
             continue
 
-        holdings.append(
-            HoldingRecord(
-                symbol=ticker,
-                company_name=str(row.get("Security Name", ticker)).strip().strip('"'),
-                weight=weight,
-                sector=str(row.get("Sector", "")).strip() or None,
-                shares=_to_int(row.get("Shares Held")),
-            )
-        )
+        holdings.append(HoldingRecord(
+            symbol=ticker,
+            company_name=str(row.get("Security Name", ticker)).strip().strip('"'),
+            weight=weight,
+            sector=str(row.get("Sector", "")).strip() or None,
+            shares=_to_int(row.get("Shares Held")),
+        ))
 
-    logger.info("SCHD: parsed %d holdings as of %s", len(holdings), as_of_date)
     return holdings, as_of_date
 
 

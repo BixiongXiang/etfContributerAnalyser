@@ -1,0 +1,98 @@
+symbol,company_name,sector,weight,as_of_date
+ABBV,AbbVie Inc,Health Care,3.4181,2026-07-30
+AVGO,Broadcom Inc,Information Technology,3.3601,2026-07-30
+HD,Home Depot Inc,Consumer Discretionary,3.1067,2026-07-30
+UNH,UnitedHealth Group Inc,Health Care,3.027,2026-07-30
+TXN,Texas Instruments Inc,Information Technology,3.0198,2026-07-30
+VZ,Verizon Communications,Communication Services,2.8967,2026-07-30
+MO,Altria Group Inc,Consumer Staples,2.8532,2026-07-30
+CVX,Chevron Corp,Energy,2.7663,2026-07-30
+PEP,PepsiCo Inc,Consumer Staples,2.7591,2026-07-30
+AMGN,Amgen Inc,Health Care,2.7084,2026-07-30
+LMT,Lockheed Martin Corp,Industrials,1.5642,2026-07-30
+KO,Coca-Cola Co,Consumer Staples,1.5352,2026-07-30
+PFE,Pfizer Inc,Health Care,1.5063,2026-07-30
+IBM,International Business Machines,Information Technology,1.4918,2026-07-30
+T,AT&T Inc,Communication Services,1.4628,2026-07-30
+MMM,3M Co,Industrials,1.4338,2026-07-30
+MRK,Merck & Co,Health Care,1.4121,2026-07-30
+CAT,Caterpillar Inc,Industrials,1.3976,2026-07-30
+PM,Philip Morris International,Consumer Staples,1.3759,2026-07-30
+MDT,Medtronic PLC,Health Care,1.3614,2026-07-30
+USB,US Bancorp,Financials,1.3469,2026-07-30
+OKE,ONEOK Inc,Energy,1.3325,2026-07-30
+WMB,Williams Companies,Energy,1.318,2026-07-30
+HII,Huntington Ingalls Industries,Industrials,1.2963,2026-07-30
+D,Dominion Energy Inc,Utilities,1.2745,2026-07-30
+SO,Southern Co,Utilities,1.2528,2026-07-30
+DUK,Duke Energy Corp,Utilities,1.2311,2026-07-30
+CMCSA,Comcast Corp,Communication Services,1.1949,2026-07-30
+VLO,Valero Energy Corp,Energy,1.1804,2026-07-30
+PSX,Phillips 66,Energy,1.1587,2026-07-30
+MPC,Marathon Petroleum Corp,Energy,1.1442,2026-07-30
+COP,ConocoPhillips,Energy,1.1225,2026-07-30
+EOG,EOG Resources Inc,Energy,1.1007,2026-07-30
+BAC,Bank of America Corp,Financials,1.0862,2026-07-30
+JPM,JPMorgan Chase & Co,Financials,1.0718,2026-07-30
+WFC,Wells Fargo & Co,Financials,1.05,2026-07-30
+C,Citigroup Inc,Financials,1.0356,2026-07-30
+MS,Morgan Stanley,Financials,1.0138,2026-07-30
+GS,Goldman Sachs Group,Financials,0.9993,2026-07-30
+BLK,BlackRock Inc,Financials,0.9776,2026-07-30
+PNC,PNC Financial Services,Financials,0.9559,2026-07-30
+MTB,M&T Bank Corp,Financials,0.9269,2026-07-30
+RF,Regions Financial Corp,Financials,0.9052,2026-07-30
+CFG,Citizens Financial Group,Financials,0.8835,2026-07-30
+XOM,Exxon Mobil Corp,Energy,0.869,2026-07-30
+KEY,KeyCorp,Financials,0.8545,2026-07-30
+FITB,Fifth Third Bancorp,Financials,0.8328,2026-07-30
+IP,International Paper Co,Materials,0.8328,2026-07-30
+HBAN,Huntington Bancshares,Financials,0.8111,2026-07-30
+NUE,Nucor Corp,Materials,0.8111,2026-07-30
+LYB,LyondellBasell Industries,Materials,0.7966,2026-07-30
+CF,CF Industries Holdings,Materials,0.7821,2026-07-30
+STT,State Street Corp,Financials,0.7821,2026-07-30
+MOS,Mosaic Co,Materials,0.7604,2026-07-30
+BK,Bank of New York Mellon,Financials,0.7604,2026-07-30
+PKG,Packaging Corp of America,Materials,0.7459,2026-07-30
+TROW,T. Rowe Price Group,Financials,0.7386,2026-07-30
+SON,Sonoco Products Co,Materials,0.7097,2026-07-30
+AFL,Aflac Inc,Financials,0.7097,2026-07-30
+ALL,Allstate Corp,Financials,0.688,2026-07-30
+AIG,American International Group,Financials,0.6662,2026-07-30
+MET,MetLife Inc,Financials,0.6373,2026-07-30
+CLF,Cleveland-Cliffs Inc,Materials,0.6373,2026-07-30
+PRU,Prudential Financial,Financials,0.6155,2026-07-30
+SLB,Schlumberger Ltd,Energy,0.6155,2026-07-30
+LNC,Lincoln National Corp,Financials,0.5938,2026-07-30
+UNM,Unum Group,Financials,0.5648,2026-07-30
+RGA,Reinsurance Group of America,Financials,0.5431,2026-07-30
+CINF,Cincinnati Financial Corp,Financials,0.5214,2026-07-30
+HAL,Halliburton Co,Energy,0.5214,2026-07-30
+DVN,Devon Energy Corp,Energy,0.4924,2026-07-30
+WRB,W.R. Berkley Corp,Financials,0.4924,2026-07-30
+FANG,Diamondback Energy,Energy,0.4707,2026-07-30
+GL,Globe Life Inc,Financials,0.4707,2026-07-30
+ABB,ABB Ltd,Industrials,0.4707,2026-07-30
+PFG,Principal Financial Group,Financials,0.449,2026-07-30
+EMR,Emerson Electric Co,Industrials,0.449,2026-07-30
+OXY,Occidental Petroleum Corp,Energy,0.449,2026-07-30
+WBA,Walgreens Boots Alliance,Consumer Staples,0.4345,2026-07-30
+AIZ,Assurant Inc,Financials,0.42,2026-07-30
+ETN,Eaton Corp,Industrials,0.42,2026-07-30
+O,Realty Income Corp,Real Estate,0.3983,2026-07-30
+PH,Parker-Hannifin Corp,Industrials,0.3983,2026-07-30
+ACGL,Arch Capital Group,Financials,0.3983,2026-07-30
+HIG,Hartford Financial Services,Financials,0.3766,2026-07-30
+ITW,Illinois Tool Works,Industrials,0.3766,2026-07-30
+TRV,Travelers Companies,Financials,0.3476,2026-07-30
+ROK,Rockwell Automation,Industrials,0.3476,2026-07-30
+GWW,W.W. Grainger Inc,Industrials,0.3259,2026-07-30
+WPC,W.P. Carey Inc,Real Estate,0.3259,2026-07-30
+CB,Chubb Ltd,Financials,0.3259,2026-07-30
+APA,APA Corp,Energy,0.3041,2026-07-30
+IR,Ingersoll Rand Inc,Industrials,0.3041,2026-07-30
+NNN,NNN REIT Inc,Real Estate,0.2752,2026-07-30
+SWK,Stanley Black & Decker,Industrials,0.2752,2026-07-30
+VTR,Ventas Inc,Real Estate,0.2535,2026-07-30
+PEAK,Healthpeak Properties,Real Estate,0.2317,2026-07-30

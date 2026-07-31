@@ -1,11 +1,12 @@
 """
-QQQ holdings parser — downloads and parses the Invesco daily holdings CSV.
+QQQ holdings parser.
 
-Invesco publishes a CSV at a stable URL. The format is:
-    Fund Name,Fund Holdings as of,Inception Date,Exchange,<blank header row>
-    Name,Ticker,Identifier,SEDOL,Weight,CDI Indicator,Notional Value,Shares/Par Value,Price,Location,Exchange,Currency,FX Rate,Market Currency,Market Value
+Strategy:
+  1. Try to download live CSV from Invesco (daily updates)
+  2. If that fails for any reason, fall back to bundled static CSV
 
-We skip header rows until we find the column headers, then parse the data.
+Invesco's download URL has historically changed. If it returns HTML instead
+of CSV (their site is a JS SPA), we detect that and fall through to the static file.
 """
 
 import io
@@ -16,65 +17,82 @@ import httpx
 import pandas as pd
 
 from src.providers.base import HoldingRecord
+from src.providers.holdings.static_loader import load_static_holdings
 
 logger = logging.getLogger(__name__)
 
-# Invesco's direct CSV download URL for QQQ
-_QQQ_URL = "https://www.invesco.com/us/financial/etfs/holdings/main/holdings/0?audienceType=Investor&action=download&ticker=QQQ"
+# Current Invesco direct CSV download URL (may need periodic updating)
+_QQQ_URL = (
+    "https://www.invesco.com/us/financial/etfs/holdings/main/holdings/0"
+    "?audienceType=Investor&action=download&ticker=QQQ"
+)
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/csv, text/plain, */*",
+    "Referer": "https://www.invesco.com/us/financial/etfs/product-detail"
+               "?audienceType=Investor&ticker=QQQ",
+}
 
 
 async def fetch_qqq_holdings() -> tuple[list[HoldingRecord], date]:
-    """Download and parse QQQ holdings from Invesco."""
-    logger.info("Fetching QQQ holdings from Invesco…")
-    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
-        resp = await client.get(_QQQ_URL)
+    """Fetch QQQ holdings — live Invesco CSV with static file fallback."""
+    try:
+        holdings, as_of = await _fetch_live()
+        if holdings:
+            logger.info("QQQ: using live holdings (%d rows, as of %s)", len(holdings), as_of)
+            return holdings, as_of
+        logger.warning("QQQ: live fetch returned 0 holdings — falling back to static file.")
+    except Exception as exc:
+        logger.warning("QQQ: live fetch failed (%s) — falling back to static file.", exc)
+
+    return load_static_holdings("QQQ")
+
+
+async def _fetch_live() -> tuple[list[HoldingRecord], date]:
+    """Attempt to download and parse the live Invesco CSV."""
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        resp = await client.get(_QQQ_URL, headers=_HEADERS)
         resp.raise_for_status()
         raw = resp.text
+
+    # Detect HTML response (Invesco serves their SPA instead of CSV sometimes)
+    if raw.strip().startswith("<") or "<!DOCTYPE" in raw[:200]:
+        raise ValueError("Response is HTML, not CSV — Invesco URL may have changed.")
 
     return _parse_invesco_csv(raw)
 
 
 def _parse_invesco_csv(raw: str) -> tuple[list[HoldingRecord], date]:
-    """
-    Parse Invesco CSV text into HoldingRecord list.
-
-    The CSV has a multi-row preamble before the actual column headers.
-    We locate the header row by looking for 'Ticker' in the row.
-    """
+    """Parse Invesco CSV text → (HoldingRecord list, as_of_date)."""
     lines = raw.splitlines()
     header_idx = None
     as_of_date = date.today()
 
     for i, line in enumerate(lines):
-        # Extract the "as of" date from the preamble
-        if "Holdings as of" in line or "as of" in line.lower():
+        if "holdings as of" in line.lower() or "as of" in line.lower():
             try:
-                # Typical format: "Fund Holdings as of,07/29/2026"
                 parts = line.split(",")
                 for part in parts:
                     part = part.strip().strip('"')
                     if "/" in part and len(part) == 10:
-                        as_of_date = date.fromisoformat(
-                            "-".join(reversed(part.split("/")))
-                            if part.count("/") == 2
-                            else part
-                        )
+                        m, d_, y = part.split("/")
+                        as_of_date = date(int(y), int(m), int(d_))
+                        break
             except Exception:
-                pass  # date parse is best-effort
+                pass
 
-        # Find the actual column header row
-        if "Ticker" in line and "Weight" in line:
+        if "ticker" in line.lower() and "weight" in line.lower():
             header_idx = i
             break
 
     if header_idx is None:
-        logger.error("QQQ CSV: could not find column header row. Raw snippet: %s", raw[:500])
         return [], as_of_date
 
-    csv_body = "\n".join(lines[header_idx:])
-    df = pd.read_csv(io.StringIO(csv_body))
-
-    # Normalise column names (strip whitespace, lowercase for matching)
+    df = pd.read_csv(io.StringIO("\n".join(lines[header_idx:])))
     df.columns = [c.strip() for c in df.columns]
 
     holdings: list[HoldingRecord] = []
@@ -82,24 +100,19 @@ def _parse_invesco_csv(raw: str) -> tuple[list[HoldingRecord], date]:
         ticker = str(row.get("Ticker", "")).strip().upper()
         if not ticker or ticker in ("", "NAN", "CASH"):
             continue
-
-        weight_raw = row.get("Weight")
         try:
-            weight = float(str(weight_raw).replace("%", "").strip())
+            weight = float(str(row.get("Weight", 0)).replace("%", "").strip())
         except (ValueError, TypeError):
             continue
 
-        holdings.append(
-            HoldingRecord(
-                symbol=ticker,
-                company_name=str(row.get("Name", ticker)).strip(),
-                weight=weight,
-                sector=str(row.get("Sector", "")).strip() or None,
-                shares=_to_int(row.get("Shares/Par Value")),
-            )
-        )
+        holdings.append(HoldingRecord(
+            symbol=ticker,
+            company_name=str(row.get("Name", ticker)).strip(),
+            weight=weight,
+            sector=str(row.get("Sector", "")).strip() or None,
+            shares=_to_int(row.get("Shares/Par Value")),
+        ))
 
-    logger.info("QQQ: parsed %d holdings as of %s", len(holdings), as_of_date)
     return holdings, as_of_date
 
 

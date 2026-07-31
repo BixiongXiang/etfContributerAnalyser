@@ -16,7 +16,7 @@
 
 import { useState, useEffect } from "react";
 import type { AttributionResponse, ETFSummary, SummaryResponse } from "@/lib/types";
-import { fetchAttribution, fetchSummary } from "@/lib/api";
+import { fetchAttribution, fetchSummary, fetchETFs } from "@/lib/api";
 import ContributorTable from "@/components/ContributorTable";
 import SectorSummary from "@/components/SectorSummary";
 import DataFreshnessTag from "@/components/DataFreshnessTag";
@@ -24,15 +24,23 @@ import DataFreshnessTag from "@/components/DataFreshnessTag";
 const SUPPORTED = ["QQQ", "VOO", "SCHD"] as const;
 
 interface Props {
-  etfs: ETFSummary[];
+  etfs: ETFSummary[]; // kept for API compatibility, ignored — fetched client-side
 }
 
-export default function ETFDashboard({ etfs }: Props) {
+export default function ETFDashboard({ etfs: _ }: Props) {
+  const [etfs, setEtfs] = useState<ETFSummary[]>([]);
   const [selected, setSelected] = useState<string>("QQQ");
   const [attribution, setAttribution] = useState<AttributionResponse | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch ETF metadata once on mount
+  useEffect(() => {
+    fetchETFs()
+      .then(setEtfs)
+      .catch(() => {}); // non-fatal — UI falls back to SUPPORTED list
+  }, []);
 
   useEffect(() => {
     setLoading(true);

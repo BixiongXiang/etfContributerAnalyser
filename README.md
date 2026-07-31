@@ -58,7 +58,7 @@ Open two terminals:
 ```bash
 cd backend
 source .venv/bin/activate
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8888
 ```
 
 On first startup the backend will:
