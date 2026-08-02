@@ -30,8 +30,16 @@ async def lifespan(app: FastAPI):
     logger.info("Database ready.")
 
     # Start the daily scheduler
-    from src.scheduler.jobs import start_scheduler
+    from src.scheduler.jobs import start_scheduler, startup_backfill
     scheduler = start_scheduler()
+
+    # Backfill any missing data since last run (runs in background, won't block startup)
+    import asyncio
+    asyncio.create_task(startup_backfill(default_days=settings.backfill_days))
+    logger.info(
+        "Startup backfill task queued (default_days=%d). App is ready.",
+        settings.backfill_days,
+    )
 
     yield
 

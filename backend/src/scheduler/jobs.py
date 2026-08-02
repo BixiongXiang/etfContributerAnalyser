@@ -282,3 +282,61 @@ def _is_trading_day(d: date) -> bool:
         logger.warning("exchange_calendars check failed (%s) — assuming trading day.", exc)
         # Fallback: skip weekends only
         return d.weekday() < 5
+
+
+async def startup_backfill(default_days: int = 30) -> None:
+    """
+    Called once at application startup to ensure the DB is not stale.
+
+    Logic:
+      - If the DB is empty → backfill the last `default_days` calendar days.
+      - If the DB has data but is missing recent trading days → backfill only
+        the gap (days since the latest stored date + a small buffer).
+      - If the DB is up to date (latest date is today or last trading day) → do nothing.
+
+    Runs in the background so it does not block the app from starting.
+    """
+    from src.models.database import AsyncSessionLocal
+    from src.models.models import Attribution
+    from sqlalchemy import select, func
+
+    logger.info("Startup backfill check…")
+
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(func.max(Attribution.date))
+            )
+            latest_date = result.scalar_one_or_none()
+
+        today = date.today()
+
+        if latest_date is None:
+            # Empty DB — full backfill
+            days_to_fetch = default_days
+            logger.info(
+                "DB is empty. Backfilling last %d days…", days_to_fetch
+            )
+        else:
+            gap_days = (today - latest_date).days
+            if gap_days <= 1:
+                # Up to date (today or yesterday — scheduler will handle today after close)
+                logger.info(
+                    "DB is up to date (latest: %s). No startup backfill needed.", latest_date
+                )
+                return
+            # Add a 3-day buffer to ensure we have a valid prev_close for the first gap day
+            days_to_fetch = gap_days + 3
+            logger.info(
+                "DB is %d day(s) behind (latest: %s). Backfilling %d days…",
+                gap_days, latest_date, days_to_fetch,
+            )
+
+        # Import here to avoid circular dependency (admin also imports from jobs)
+        from src.api.routes.admin import _run_backfill
+        await _run_backfill(SUPPORTED_ETFS, days_to_fetch)
+        logger.info("Startup backfill complete.")
+
+    except Exception as exc:
+        # Never crash the app on startup backfill failure
+        logger.error("Startup backfill failed: %s", exc, exc_info=True)
