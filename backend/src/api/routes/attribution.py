@@ -275,6 +275,249 @@ async def get_live_attribution(
     )
 
 
+@router.get("/attribution/{symbol}/available-dates")
+async def get_available_dates(
+    symbol: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return all dates that have attribution data for the given ETF.
+    The frontend uses this to disable unavailable dates in the date picker.
+    """
+    symbol = symbol.upper()
+    result = await db.execute(
+        select(Attribution.date)
+        .where(Attribution.etf_symbol == symbol)
+        .distinct()
+        .order_by(Attribution.date)
+    )
+    dates = result.scalars().all()
+    if not dates:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No attribution data found for {symbol}. Run /api/admin/backfill first.",
+        )
+    return {
+        "etf": symbol,
+        "dates": [str(d) for d in dates],
+        "earliest": str(dates[0]),
+        "latest": str(dates[-1]),
+    }
+
+
+class RangeAttributionResponse(BaseModel):
+    etf: str
+    start_date: str
+    end_date: str
+    # Approximate ETF return over the range: sum of cumulative contributions
+    etf_return_pct: float
+    top_negative: list[ContributorRow]
+    top_positive: list[ContributorRow]
+    sector_attribution: list[SectorRow]
+
+
+@router.get("/attribution/{symbol}/range", response_model=RangeAttributionResponse)
+async def get_range_attribution(
+    symbol: str,
+    start: date = Query(..., description="Range start date (YYYY-MM-DD)"),
+    end: date = Query(..., description="Range end date (YYYY-MM-DD)"),
+    top_n: int = Query(default=10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return cumulative attribution for the given ETF over a date range.
+
+    For each holding:
+      - cumulative_contribution = SUM(daily contribution) over all days in [start, end]
+      - return_pct = (close on last trading day in range - close on first trading day in range)
+                     / close on first trading day * 100
+        computed from daily_prices; falls back to SUM(daily return_pct) if price data missing.
+
+    The etf_return_pct is the sum of all holdings' cumulative contributions (approximate).
+    """
+    from src.models.models import DailyPrice
+    from sqlalchemy import text
+
+    symbol = symbol.upper()
+
+    if start > end:
+        raise HTTPException(status_code=400, detail="start must be <= end.")
+
+    # --- 1. Sum daily contributions per holding over the range ---
+    result = await db.execute(
+        select(
+            Attribution.symbol,
+            Attribution.company_name,
+            Attribution.sector,
+            Attribution.weight,
+            func.sum(Attribution.contribution).label("cumulative_contribution"),
+        )
+        .where(Attribution.etf_symbol == symbol)
+        .where(Attribution.date >= start)
+        .where(Attribution.date <= end)
+        .group_by(Attribution.symbol, Attribution.company_name, Attribution.sector, Attribution.weight)
+        .order_by(func.abs(func.sum(Attribution.contribution)).desc())
+    )
+    rows = result.all()
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No attribution data for {symbol} between {start} and {end}. "
+                   "Check available dates via /api/attribution/{symbol}/available-dates.",
+        )
+
+    # Use the average weight across the period (weight changes day-to-day are small)
+    # For single day, this is just the weight on that day.
+    # Re-query to get average weight properly
+    weight_result = await db.execute(
+        select(
+            Attribution.symbol,
+            func.avg(Attribution.weight).label("avg_weight"),
+        )
+        .where(Attribution.etf_symbol == symbol)
+        .where(Attribution.date >= start)
+        .where(Attribution.date <= end)
+        .group_by(Attribution.symbol)
+    )
+    avg_weights = {r.symbol: r.avg_weight for r in weight_result.all()}
+
+    # --- 2. Fetch cumulative stock returns from daily_prices ---
+    # For each symbol, find:
+    #   start_price = close on the earliest trading day >= start
+    #   end_price   = close on the latest  trading day <= end
+    # Then cumulative_return = (end_price - start_price) / start_price * 100
+
+    all_symbols = [r.symbol for r in rows]
+
+    # Get min date >= start and max date <= end for each symbol in one query
+    price_bounds_result = await db.execute(
+        select(
+            DailyPrice.symbol,
+            func.min(DailyPrice.date).label("first_date"),
+            func.max(DailyPrice.date).label("last_date"),
+        )
+        .where(DailyPrice.symbol.in_(all_symbols))
+        .where(DailyPrice.date >= start)
+        .where(DailyPrice.date <= end)
+        .group_by(DailyPrice.symbol)
+    )
+    price_bounds = {r.symbol: (r.first_date, r.last_date) for r in price_bounds_result.all()}
+
+    # Fetch the actual prices for those specific dates
+    # Build a set of (symbol, date) pairs we need
+    needed_dates: dict[str, list[date]] = {}
+    for sym, (fd, ld) in price_bounds.items():
+        needed_dates[sym] = list({fd, ld})  # dedup if same day
+
+    # Fetch prices in one query using IN on dates
+    all_needed_date_values = list({d for dates in needed_dates.values() for d in dates})
+    prices_result = await db.execute(
+        select(DailyPrice.symbol, DailyPrice.date, DailyPrice.close)
+        .where(DailyPrice.symbol.in_(all_symbols))
+        .where(DailyPrice.date.in_(all_needed_date_values))
+    )
+    price_map: dict[str, dict] = {}
+    for pr in prices_result.all():
+        price_map.setdefault(pr.symbol, {})[pr.date] = pr.close
+
+    # --- 3. Build contributor rows ---
+    # Fallback return_pct per symbol from attribution table (sum of daily returns, approximate)
+    fallback_result = await db.execute(
+        select(
+            Attribution.symbol,
+            func.sum(Attribution.return_pct).label("sum_return_pct"),
+        )
+        .where(Attribution.etf_symbol == symbol)
+        .where(Attribution.date >= start)
+        .where(Attribution.date <= end)
+        .group_by(Attribution.symbol)
+    )
+    fallback_returns = {r.symbol: r.sum_return_pct for r in fallback_result.all()}
+
+    contributors: list[ContributorRow] = []
+    etf_return = 0.0
+
+    for row in rows:
+        sym = row.symbol
+        cumulative_contribution = row.cumulative_contribution
+        etf_return += cumulative_contribution
+
+        # Compute cumulative return from prices
+        bounds = price_bounds.get(sym)
+        return_pct = fallback_returns.get(sym, 0.0)  # default to fallback
+        if bounds:
+            fd, ld = bounds
+            sym_prices = price_map.get(sym, {})
+            start_price = sym_prices.get(fd)
+            end_price = sym_prices.get(ld)
+            if start_price and end_price and start_price != 0:
+                return_pct = (end_price - start_price) / start_price * 100
+
+        pct_of_total = (cumulative_contribution / etf_return * 100) if etf_return != 0 else 0.0
+        contributors.append(
+            ContributorRow(
+                symbol=sym,
+                company_name=row.company_name,
+                weight=round(avg_weights.get(sym, row.weight), 4),
+                return_pct=round(return_pct, 4),
+                contribution=round(cumulative_contribution, 6),
+                sector=row.sector,
+                pct_of_total_move=round(pct_of_total, 2),
+            )
+        )
+
+    # Recalculate pct_of_total now that etf_return is final
+    for c in contributors:
+        c.pct_of_total_move = round(
+            (c.contribution / etf_return * 100) if etf_return != 0 else 0.0, 2
+        )
+
+    negatives = sorted(
+        [c for c in contributors if c.contribution < 0],
+        key=lambda x: x.contribution,
+    )[:top_n]
+
+    positives = sorted(
+        [c for c in contributors if c.contribution > 0],
+        key=lambda x: -x.contribution,
+    )[:top_n]
+
+    # --- 4. Sector aggregation ---
+    sector_map: dict[str, dict] = {}
+    for c in contributors:
+        sector = c.sector or "Unknown"
+        sector_map.setdefault(sector, {"contribution": 0.0, "count": 0})
+        sector_map[sector]["contribution"] += c.contribution
+        sector_map[sector]["count"] += 1
+
+    sector_rows = sorted(
+        [
+            SectorRow(
+                sector=s,
+                contribution=round(v["contribution"], 6),
+                pct_of_total_move=round(
+                    (v["contribution"] / etf_return * 100) if etf_return != 0 else 0.0, 2
+                ),
+                num_stocks=v["count"],
+            )
+            for s, v in sector_map.items()
+        ],
+        key=lambda x: abs(x.contribution),
+        reverse=True,
+    )
+
+    return RangeAttributionResponse(
+        etf=symbol,
+        start_date=str(start),
+        end_date=str(end),
+        etf_return_pct=round(etf_return, 4),
+        top_negative=negatives,
+        top_positive=positives,
+        sector_attribution=sector_rows,
+    )
+
+
 @router.get("/attribution/{symbol}/history")
 async def get_attribution_history(
     symbol: str,

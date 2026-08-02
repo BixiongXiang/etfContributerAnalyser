@@ -5,6 +5,8 @@
 
 import type {
   AttributionResponse,
+  AvailableDatesResponse,
+  RangeAttributionResponse,
   ETFSummary,
   SummaryResponse,
   HealthResponse,
@@ -59,4 +61,31 @@ export async function fetchSummary(
 /** Health check. */
 export async function fetchHealth(): Promise<HealthResponse> {
   return get<HealthResponse>("/health");
+}
+
+/**
+ * Fetch all dates that have attribution data for an ETF.
+ * Used to disable unavailable dates in the date range picker.
+ */
+export async function fetchAvailableDates(
+  symbol: string
+): Promise<AvailableDatesResponse> {
+  return get<AvailableDatesResponse>(`/attribution/${symbol}/available-dates`);
+}
+
+/**
+ * Fetch cumulative attribution for an ETF over a date range.
+ * @param symbol  e.g. "QQQ"
+ * @param start   YYYY-MM-DD
+ * @param end     YYYY-MM-DD  (same as start for single-day view)
+ */
+export async function fetchRangeAttribution(
+  symbol: string,
+  start: string,
+  end: string,
+  topN?: number
+): Promise<RangeAttributionResponse> {
+  const params = new URLSearchParams({ start, end });
+  if (topN !== undefined) params.set("top_n", String(topN));
+  return get<RangeAttributionResponse>(`/attribution/${symbol}/range?${params}`);
 }

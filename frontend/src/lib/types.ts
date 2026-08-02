@@ -47,3 +47,22 @@ export interface HealthResponse {
   status: string;
   timestamp: string;
 }
+
+/** Response from GET /api/attribution/{symbol}/available-dates */
+export interface AvailableDatesResponse {
+  etf: string;
+  dates: string[];    // YYYY-MM-DD strings
+  earliest: string;   // YYYY-MM-DD
+  latest: string;     // YYYY-MM-DD
+}
+
+/** Response from GET /api/attribution/{symbol}/range */
+export interface RangeAttributionResponse {
+  etf: string;
+  start_date: string;   // YYYY-MM-DD
+  end_date: string;     // YYYY-MM-DD
+  etf_return_pct: number;
+  top_negative: ContributorRow[];
+  top_positive: ContributorRow[];
+  sector_attribution: SectorRow[];
+}
