@@ -18,7 +18,7 @@ services:
       - db_data:/app/data
     ports:
       # Expose on localhost only — frontend proxies /api/* to the backend
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8888:8000"
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]

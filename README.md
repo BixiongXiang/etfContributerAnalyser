@@ -3,13 +3,24 @@
 Explains **why an ETF moved today** by ranking each holding's contribution to the index return.
 
 ```
-Contribution = Weight × Daily Return
+Contribution (pp) = Weight (%) × Daily Return (%)  / 100
 ```
 
 Stocks are sorted by **absolute contribution** — a stock moving 10% with a 0.5% weight matters
 less than one moving 2% with an 8% weight.
 
 Supports: **QQQ** (Invesco NASDAQ-100), **VOO** (Vanguard S&P 500), **SCHD** (Schwab Dividend).
+
+---
+
+## Features
+
+- Daily and intraday (live) attribution breakdown per ETF
+- Date range view — pick any start/end date to see cumulative contributors
+- Sector-level aggregation
+- Auto-refresh every 30 min during market hours, pauses when tab is hidden
+- Startup backfill — automatically fills missing days when the app restarts
+- Rule-based text summary of the day's market moves
 
 ---
 
@@ -21,17 +32,15 @@ Supports: **QQQ** (Invesco NASDAQ-100), **VOO** (Vanguard S&P 500), **SCHD** (Sc
 |------|---------|---------|
 | Python | 3.12 | `brew install python@3.12` |
 | Node.js | 22 | `brew install node` |
-| git | any | pre-installed on macOS |
 | Docker | optional | Docker Desktop — only needed for deployment |
 
 ### 1. Clone and configure
 
 ```bash
-git clone <your-repo-url> market-attribution
-cd market-attribution
+git clone <your-repo-url> etfContributerAnalyser
+cd etfContributerAnalyser
 
-# Copy environment template (no edits needed for default yfinance setup)
-cp .env.example backend/.env
+cp .env.example .env   # defaults work out of the box
 ```
 
 ### 2. Backend setup
@@ -46,7 +55,7 @@ pip install -r requirements.txt
 ### 3. Frontend setup
 
 ```bash
-cd ../frontend
+cd frontend
 npm install
 ```
 
@@ -61,9 +70,7 @@ source .venv/bin/activate
 uvicorn main:app --reload --port 8888
 ```
 
-On first startup the backend will:
-1. Create `backend/data/market_attribution.db`
-2. Seed the three ETF records
+On first startup the backend will automatically backfill the last 30 days of data.
 
 **Terminal 2 — Frontend (Next.js)**
 ```bash
@@ -71,8 +78,6 @@ cd frontend
 npm run dev
 # → http://localhost:3000
 ```
-
-The frontend proxies `/api/*` to `localhost:8000`. Hot reload is enabled for both.
 
 ### 5. Run tests
 
@@ -84,61 +89,146 @@ pytest -v
 
 ---
 
-## Production Deployment (Docker)
+## Deployment (Docker — Ubuntu / Linux laptop)
 
-Docker is for deployment only — not required during development.
-
-### Supported targets
-
-- **Windows laptop** — Docker Desktop with Linux containers (default)
-- **Amazon EC2 (Amazon Linux / Ubuntu)** — standard Docker Compose
-
-### One-command startup
+### Install Docker
 
 ```bash
-# In the project root
-cp .env.example .env   # edit if needed
-docker compose up -d
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2
+
+# Allow running docker without sudo
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Verify
+docker --version
+docker compose version
 ```
 
-This starts:
-- `backend` — FastAPI + APScheduler + SQLite
-- `frontend` — Next.js (production build)
-
-Open `http://localhost:3000` (local) or `http://<ec2-public-ip>:3000` (EC2).
-
-### EC2 setup (one-time)
+### First-time deploy
 
 ```bash
-# Install Docker on Amazon Linux 2023
-sudo yum update -y
-sudo yum install -y docker
-sudo systemctl start docker
-sudo usermod -aG docker ec2-user
+# 1. Copy the project to the server (from your dev machine)
+rsync -avz --exclude 'node_modules' --exclude '.venv' --exclude '*.db' \
+  /path/to/etfContributerAnalyser/ \
+  user@<server-ip>:~/etfContributerAnalyser/
 
-# Install Docker Compose plugin
-sudo mkdir -p /usr/local/lib/docker/cli-plugins
-sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
-     -o /usr/local/lib/docker/cli-plugins/docker-compose
-sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+# 2. On the server
+cd ~/etfContributerAnalyser
+cp .env.example .env          # defaults are fine — edit if needed
 
-# Clone and start
-git clone <your-repo-url> market-attribution
-cd market-attribution
-cp .env.example .env
-docker compose up -d
+# 3. Build and start (takes 2–3 min on first build)
+docker compose up --build -d
 ```
 
-### Persistent data
-
-SQLite is stored in a Docker named volume (`db_data`). It survives container restarts.
+### Verify it's running
 
 ```bash
-# Backup the database
-docker compose cp backend:/app/data/market_attribution.db ./backup.db
+# Check both containers are healthy
+docker compose ps
 
-# View logs
+# Watch the startup backfill logs
 docker compose logs -f backend
+# Look for: "Startup backfill complete."
+
+# Health check
+curl http://localhost:8888/api/health
+```
+
+App is available at `http://localhost:3000` or `http://<server-ip>:3000` from other devices on the network.
+
+### Survive reboots
+
+```bash
+# Enable Docker to start on boot
+sudo systemctl enable docker
+sudo systemctl enable containerd
+```
+
+Both containers have `restart: unless-stopped` — they come back automatically after a reboot.
+The startup backfill fills any gap since the last run.
+
+### Useful Docker commands
+
+```bash
+# View live logs
+docker compose logs -f
+
+# Stop everything
+docker compose down
+
+# Restart a single container
+docker compose restart backend
+
+# Backup the SQLite database
+docker compose cp backend:/app/data/market_attribution.db ./backup.db
+```
+
+---
+
+## Deploying Updates
+
+### Option 1 — rsync (recommended, no GitHub needed)
+
+Sync only changed files from your dev machine to the server:
+
+```bash
+rsync -avz --exclude 'node_modules' --exclude '.venv' --exclude '*.db' \
+  /path/to/etfContributerAnalyser/ \
+  user@<server-ip>:~/etfContributerAnalyser/
+```
+
+Then on the server, rebuild and restart:
+
+```bash
+docker compose up --build -d
+```
+
+If only backend Python files changed (no dependency changes), you can rebuild just the backend:
+
+```bash
+docker compose up --build -d backend
+```
+
+### Option 2 — scp (for single file changes)
+
+```bash
+# Copy one file
+scp backend/src/api/routes/attribution.py \
+  user@<server-ip>:~/etfContributerAnalyser/backend/src/api/routes/
+
+# Then on the server
+docker compose restart backend
+```
+
+### Option 3 — GitHub (cleanest long-term)
+
+```bash
+# Dev machine
+git push origin main
+
+# Server
+git pull
+docker compose up --build -d
+```
+
+---
+
+## Manual Data Management
+
+On first startup the app automatically backfills the last 30 days (configurable via `BACKFILL_DAYS`).
+For manual control:
+
+```bash
+# Backfill last N days for all ETFs
+curl -X POST "http://localhost:8888/api/admin/backfill?days=30"
+
+# Backfill a specific ETF only
+curl -X POST "http://localhost:8888/api/admin/backfill?symbol=QQQ&days=7"
+
+# Check what data is in the database
+curl http://localhost:8888/api/admin/status
 ```
 
 ---
@@ -150,40 +240,10 @@ See `.env.example` for all options. Key settings:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATA_PROVIDER` | `yfinance` | Price source: `yfinance` (free) or `fmp` |
-| `FMP_API_KEY` | _(blank)_ | FMP key — only needed if `DATA_PROVIDER=fmp` |
+| `FMP_API_KEY` | _(blank)_ | Required only if `DATA_PROVIDER=fmp` |
 | `SCHEDULE_TIME` | `16:15` | Daily update time (US/Eastern, 24h) |
 | `BACKFILL_DAYS` | `30` | Days of history to load on first startup |
 | `LOG_LEVEL` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` |
-
----
-
-## Project Structure
-
-```
-etfContributerAnalyser/
-├── backend/
-│   ├── src/
-│   │   ├── api/routes/       # FastAPI endpoint handlers
-│   │   ├── core/             # Attribution engine, summary generator
-│   │   ├── providers/        # Data sources (yfinance, FMP, holdings parsers)
-│   │   ├── models/           # SQLAlchemy models + database session
-│   │   ├── scheduler/        # Daily job (APScheduler)
-│   │   └── config.py         # Settings (pydantic-settings)
-│   ├── tests/                # Pytest unit tests
-│   ├── main.py               # FastAPI app entry point
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── app/              # Next.js App Router pages
-│   │   ├── components/       # React components
-│   │   └── lib/              # API client, TypeScript types
-│   ├── package.json
-│   └── Dockerfile
-├── docker-compose.yml
-├── .env.example
-└── README.md
-```
 
 ---
 
@@ -194,26 +254,46 @@ etfContributerAnalyser/
 | `GET` | `/api/health` | Health check |
 | `GET` | `/api/etfs` | List supported ETFs |
 | `GET` | `/api/attribution/{symbol}` | Daily attribution (latest or `?date=YYYY-MM-DD`) |
-| `GET` | `/api/attribution/{symbol}/history` | Historical (`?period=5d\|30d\|90d\|ytd`) |
+| `GET` | `/api/attribution/{symbol}/live` | Intraday attribution (falls back to close outside market hours) |
+| `GET` | `/api/attribution/{symbol}/range` | Cumulative attribution over a date range (`?start=&end=`) |
+| `GET` | `/api/attribution/{symbol}/available-dates` | Dates that have data in the DB |
 | `GET` | `/api/summary/{symbol}` | Rule-based text summary |
+| `POST` | `/api/admin/backfill` | Trigger data backfill (`?days=N&symbol=X`) |
+| `GET` | `/api/admin/status` | Database contents summary |
 
-Interactive API docs: `http://localhost:8000/docs`
+Interactive API docs: `http://localhost:8888/docs`
 
 ---
 
-## Implementation Status
+## Project Structure
 
-- [x] Project scaffold (backend + frontend)
-- [x] SQLite schema + SQLAlchemy models
-- [x] yfinance price provider (batch mode)
-- [x] Holdings parsers: QQQ (Invesco), VOO (Vanguard), SCHD (Schwab)
-- [x] Attribution engine with unit tests
-- [x] Rule-based summary generator
-- [x] Daily scheduler (APScheduler + NYSE calendar)
-- [x] Next.js frontend scaffold (ETF tabs, contributor table, sector bars)
-- [ ] REST endpoint implementations (Week 2)
-- [ ] End-to-end integration test (Week 2)
-- [ ] Manual validation against live data (Week 3)
+```
+etfContributerAnalyser/
+├── backend/
+│   ├── src/
+│   │   ├── api/routes/       # FastAPI endpoint handlers
+│   │   ├── core/             # Attribution engine, summary generator, market hours
+│   │   ├── providers/        # Data sources (yfinance, FMP, holdings parsers)
+│   │   ├── models/           # SQLAlchemy models + database session
+│   │   ├── scheduler/        # Daily job + startup backfill (APScheduler)
+│   │   └── config.py         # Settings (pydantic-settings)
+│   ├── tests/                # Pytest unit tests
+│   ├── main.py               # FastAPI app entry point
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/
+│   ├── src/
+│   │   ├── app/              # Next.js App Router pages
+│   │   ├── components/       # ETFDashboard, ContributorTable, SectorSummary,
+│   │   │                     # DateRangePicker, DataFreshnessTag
+│   │   └── lib/              # API client, TypeScript types
+│   ├── public/
+│   ├── package.json
+│   └── Dockerfile
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
 
 ---
 
@@ -221,6 +301,6 @@ Interactive API docs: `http://localhost:8000/docs`
 
 1. **Contribution over return** — rank by `weight × return`, not raw return
 2. **Data freshness is visible** — always show when data was last updated
-3. **Graceful degradation** — stale data beats no data; show with a warning
+3. **Graceful degradation** — stale data beats no data; shown with a warning
 4. **Free by default** — yfinance requires no API key
 5. **Simple deployment** — one `docker compose up -d` to start everything
