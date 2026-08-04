@@ -18,6 +18,7 @@ export interface ContributorRow {
   contribution: number; // percentage points, e.g. -0.254
   sector: string | null;
   pct_of_total_move: number; // %, e.g. 20.5
+  price: number | null; // latest close price in USD
 }
 
 export interface SectorRow {

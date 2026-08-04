@@ -25,6 +25,7 @@ class ContributorRow(BaseModel):
     contribution: float
     sector: Optional[str]
     pct_of_total_move: float
+    price: Optional[float] = None  # latest close price (USD)
 
 
 class SectorRow(BaseModel):
@@ -80,6 +81,16 @@ async def get_attribution(
             detail=f"No attribution data for {symbol} on {trade_date}.",
         )
 
+    # Fetch close prices for the trade date to populate price field
+    from src.models.models import DailyPrice
+    symbols_list = [r.symbol for r in rows]
+    price_result = await db.execute(
+        select(DailyPrice.symbol, DailyPrice.close)
+        .where(DailyPrice.symbol.in_(symbols_list))
+        .where(DailyPrice.date == trade_date)
+    )
+    price_map: dict[str, float] = {r.symbol: r.close for r in price_result.all()}
+
     # Total ETF return = sum of all contributions
     etf_return = sum(r.contribution for r in rows)
 
@@ -94,6 +105,7 @@ async def get_attribution(
             contribution=round(row.contribution, 6),
             sector=row.sector,
             pct_of_total_move=round(pct, 2),
+            price=round(price_map[row.symbol], 2) if row.symbol in price_map else None,
         )
 
     all_contributors = [to_contributor(r) for r in rows]
@@ -233,6 +245,7 @@ async def get_live_attribution(
 
     def to_contributor(a) -> ContributorRow:
         pct = (a.contribution / etf_return * 100) if etf_return != 0 else 0.0
+        current_price = prices.get(a.symbol)
         return ContributorRow(
             symbol=a.symbol,
             company_name=a.company_name,
@@ -241,6 +254,7 @@ async def get_live_attribution(
             contribution=round(a.contribution, 6),
             sector=a.sector,
             pct_of_total_move=round(pct, 2),
+            price=round(current_price[0], 2) if current_price else None,
         )
 
     all_contributors = [to_contributor(a) for a in attributions]
@@ -455,6 +469,12 @@ async def get_range_attribution(
                 return_pct = (end_price - start_price) / start_price * 100
 
         pct_of_total = (cumulative_contribution / etf_return * 100) if etf_return != 0 else 0.0
+        # Use end-date close price as the "current" price for the range
+        end_price_for_display: Optional[float] = None
+        bounds = price_bounds.get(sym)
+        if bounds:
+            _, ld = bounds
+            end_price_for_display = price_map.get(sym, {}).get(ld)
         contributors.append(
             ContributorRow(
                 symbol=sym,
@@ -464,6 +484,7 @@ async def get_range_attribution(
                 contribution=round(cumulative_contribution, 6),
                 sector=row.sector,
                 pct_of_total_move=round(pct_of_total, 2),
+                price=round(end_price_for_display, 2) if end_price_for_display else None,
             )
         )
 

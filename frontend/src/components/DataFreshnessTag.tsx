@@ -28,8 +28,8 @@ export default function DataFreshnessTag({ isoTimestamp }: Props) {
     <span
       className={`rounded px-2 py-1 text-xs font-medium ${
         isStale
-          ? "bg-yellow-100 text-yellow-800"
-          : "bg-gray-100 text-gray-600"
+          ? "bg-yellow-900/50 text-yellow-400"
+          : "bg-gray-800 text-gray-400"
       }`}
       title={isoTimestamp}
     >

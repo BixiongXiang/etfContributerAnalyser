@@ -4,10 +4,10 @@
  * DateRangePicker — lets the user select a start and end date.
  *
  * - Available dates are fetched from /api/attribution/{symbol}/available-dates
- * - Dates outside the available set are disabled (grayed out via min/max + validation)
+ * - Dates outside the available set are disabled via min/max attributes
  * - Default: start = end = latest available date  (single-day mode)
  * - When start == end it is effectively a single-day view
- * - Parent is notified via onRangeChange whenever a valid range is committed
+ * - Parent is notified via onRangeChange whenever Apply is clicked
  */
 
 import { useState, useEffect } from "react";
@@ -15,15 +15,13 @@ import type { AvailableDatesResponse } from "@/lib/types";
 import { fetchAvailableDates } from "@/lib/api";
 
 interface DateRange {
-  start: string; // YYYY-MM-DD
-  end: string;   // YYYY-MM-DD
+  start: string;
+  end: string;
 }
 
 interface Props {
   symbol: string;
-  /** Called when the user confirms a valid range. */
   onRangeChange: (range: DateRange) => void;
-  /** Whether a data fetch is in progress (disables Apply button). */
   loading?: boolean;
 }
 
@@ -31,28 +29,21 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
   const [availableDates, setAvailableDates] = useState<AvailableDatesResponse | null>(null);
   const [datesLoading, setDatesLoading] = useState(true);
   const [datesError, setDatesError] = useState<string | null>(null);
-
-  // Draft values — not committed until Apply is clicked
   const [draftStart, setDraftStart] = useState<string>("");
   const [draftEnd, setDraftEnd] = useState<string>("");
-
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Fetch available dates whenever the symbol changes
   useEffect(() => {
     setDatesLoading(true);
     setDatesError(null);
     fetchAvailableDates(symbol)
       .then((res) => {
         setAvailableDates(res);
-        // Default to latest available date for both start and end
         setDraftStart(res.latest);
         setDraftEnd(res.latest);
         setValidationError(null);
       })
-      .catch(() => {
-        setDatesError("Could not load available dates.");
-      })
+      .catch(() => setDatesError("Could not load available dates."))
       .finally(() => setDatesLoading(false));
   }, [symbol]);
 
@@ -67,7 +58,6 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
 
   function handleStartChange(val: string) {
     setDraftStart(val);
-    // If new start is after current end, snap end to start
     if (val > draftEnd) setDraftEnd(val);
     setValidationError(null);
   }
@@ -79,14 +69,10 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
 
   function handleApply() {
     const err = validate(draftStart, draftEnd);
-    if (err) {
-      setValidationError(err);
-      return;
-    }
+    if (err) { setValidationError(err); return; }
     onRangeChange({ start: draftStart, end: draftEnd });
   }
 
-  // Allow pressing Enter on either input to apply
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter") handleApply();
   }
@@ -97,15 +83,14 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
     draftStart === availableDates.latest &&
     draftEnd === availableDates.latest;
 
-  if (datesLoading) {
-    return <div className="text-xs text-gray-400">Loading dates…</div>;
-  }
-
-  if (datesError) {
-    return <div className="text-xs text-red-500">{datesError}</div>;
-  }
-
+  if (datesLoading) return <div className="text-xs text-gray-500">Loading dates…</div>;
+  if (datesError) return <div className="text-xs text-red-400">{datesError}</div>;
   if (!availableDates) return null;
+
+  const inputClass =
+    "rounded-md border border-gray-600 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 " +
+    "focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-500 " +
+    "[color-scheme:dark]";
 
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -119,8 +104,7 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
           max={availableDates.latest}
           onChange={(e) => handleStartChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900
-                     focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300"
+          className={inputClass}
         />
       </div>
 
@@ -134,8 +118,7 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
           max={availableDates.latest}
           onChange={(e) => handleEndChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900
-                     focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-300"
+          className={inputClass}
         />
       </div>
 
@@ -143,26 +126,26 @@ export default function DateRangePicker({ symbol, onRangeChange, loading }: Prop
       <button
         onClick={handleApply}
         disabled={loading || isDefaultState}
-        className="rounded-md bg-gray-900 px-4 py-1.5 text-sm font-medium text-white
-                   hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white
+                   hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         {loading ? "Loading…" : "Apply"}
       </button>
 
       {/* Mode indicator */}
-      <span className="text-xs text-gray-400 self-center">
-        {isSingleDay ? "Single day" : `Range · ${countTradingDays(availableDates.dates, draftStart, draftEnd)} trading days`}
+      <span className="text-xs text-gray-500 self-center">
+        {isSingleDay
+          ? "Single day"
+          : `Range · ${countTradingDays(availableDates.dates, draftStart, draftEnd)} trading days`}
       </span>
 
-      {/* Validation error */}
       {validationError && (
-        <p className="w-full text-xs text-red-500">{validationError}</p>
+        <p className="w-full text-xs text-red-400">{validationError}</p>
       )}
     </div>
   );
 }
 
-/** Count how many available dates fall within [start, end]. */
 function countTradingDays(dates: string[], start: string, end: string): number {
   return dates.filter((d) => d >= start && d <= end).length;
 }
