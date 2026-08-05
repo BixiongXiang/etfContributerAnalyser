@@ -267,8 +267,31 @@ async def _process_etf(session, etf_symbol, today, yesterday, price_provider, fe
             )
         )
 
+    # --- 6. Store today's prices in daily_prices (enables price display after hours) ---
+    from src.models.models import DailyPrice
+    stored_prices = 0
+    for pr in price_records:
+        if pr.date == today:
+            existing = await session.get(DailyPrice, (pr.symbol, pr.date))
+            if existing:
+                existing.close = pr.close
+                existing.open = pr.open
+                existing.high = pr.high
+                existing.low = pr.low
+            else:
+                session.add(DailyPrice(
+                    symbol=pr.symbol,
+                    date=pr.date,
+                    open=pr.open,
+                    high=pr.high,
+                    low=pr.low,
+                    close=pr.close,
+                ))
+            stored_prices += 1
+
     logger.info(
-        "%s: stored %d attribution rows for %s.", etf_symbol, len(attributions), today
+        "%s: stored %d attribution rows and %d price records for %s.",
+        etf_symbol, len(attributions), stored_prices, today
     )
 
 

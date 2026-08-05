@@ -265,6 +265,22 @@ async def _backfill_etf(etf_symbol: str, start_date: date, end_date: date, price
                 ))
             total_stored += len(attributions)
 
+            # Store prices for this trade_date in daily_prices
+            from src.models.models import DailyPrice
+            for sym, date_prices in price_by_symbol.items():
+                if trade_date not in date_prices:
+                    continue
+                close = date_prices[trade_date]
+                existing = await session.get(DailyPrice, (sym, trade_date))
+                if existing:
+                    existing.close = close
+                else:
+                    session.add(DailyPrice(
+                        symbol=sym,
+                        date=trade_date,
+                        close=close,
+                    ))
+
         await session.commit()
         logger.info("%s: backfill complete. Stored %d attribution rows across %d dates.",
                     etf_symbol, total_stored, len(trading_dates))
