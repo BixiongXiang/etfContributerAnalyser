@@ -64,7 +64,16 @@ export default function ContributorTable({ title, rows, variant }: Props) {
                   className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 transition-colors"
                 >
                   <td className="px-4 py-2.5 text-gray-600">{i + 1}</td>
-                  <td className="px-4 py-2.5 font-semibold text-white">{row.symbol}</td>
+                  <td className="px-4 py-2.5 font-semibold text-white">
+                    <a
+                      href={`https://finance.yahoo.com/quote/${row.symbol}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hover:text-blue-400 transition-colors"
+                    >
+                      {row.symbol}
+                    </a>
+                  </td>
                   <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
                     {fmtPrice(row.price)}
                   </td>
