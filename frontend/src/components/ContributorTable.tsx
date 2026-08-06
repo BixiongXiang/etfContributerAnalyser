@@ -46,10 +46,10 @@ export default function ContributorTable({ title, rows, variant }: Props) {
             <tr className="border-b border-gray-700 bg-[#0d1117] text-left text-xs font-medium text-gray-500">
               <th className="px-4 py-2">#</th>
               <th className="px-4 py-2">Ticker</th>
-              <th className="px-4 py-2 text-right">Price</th>
-              <th className="px-4 py-2 text-right">Weight</th>
-              <th className="px-4 py-2 text-right">Return</th>
               <th className="px-4 py-2 text-right">Contribution</th>
+              <th className="px-4 py-2 text-right">Price</th>
+              <th className="px-4 py-2 text-right">Return</th>
+              <th className="px-4 py-2 text-right">Weight</th>
               <th className="px-4 py-2 hidden lg:table-cell">Sector</th>
             </tr>
           </thead>
@@ -74,17 +74,17 @@ export default function ContributorTable({ title, rows, variant }: Props) {
                       {row.symbol}
                     </a>
                   </td>
-                  <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
-                    {fmtPrice(row.price)}
+                  <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${contribColor}`}>
+                    {fmtContrib(row.contribution)}
                   </td>
                   <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
-                    {row.weight.toFixed(1)}%
+                    {fmtPrice(row.price)}
                   </td>
                   <td className={`px-4 py-2.5 text-right tabular-nums ${returnColor}`}>
                     {fmt(row.return_pct)}
                   </td>
-                  <td className={`px-4 py-2.5 text-right font-medium tabular-nums ${contribColor}`}>
-                    {fmtContrib(row.contribution)}
+                  <td className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
+                    {row.weight.toFixed(1)}%
                   </td>
                   <td className="px-4 py-2.5 text-gray-500 hidden lg:table-cell">
                     {row.sector ?? "—"}

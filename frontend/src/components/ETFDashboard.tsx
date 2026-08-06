@@ -207,7 +207,16 @@ export default function ETFDashboard({ etfs: _ }: Props) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold text-white">{selected}</h2>
+            <h2 className="text-2xl font-bold text-white">
+                <a
+                  href={`https://finance.yahoo.com/quote/${selected}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-blue-400 transition-colors"
+                >
+                  {selected}
+                </a>
+              </h2>
 
             {!isRangeMode && (
               <span
