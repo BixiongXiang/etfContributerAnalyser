@@ -303,8 +303,6 @@ export default function ETFDashboard({ etfs: _ }: Props) {
 
       {attribution && (
         <>
-          <SectorSummary sectors={attribution.sector_attribution} />
-
           <div className="grid gap-6 lg:grid-cols-2">
             <ContributorTable
               title="Top Negative Contributors"
@@ -317,6 +315,8 @@ export default function ETFDashboard({ etfs: _ }: Props) {
               variant="positive"
             />
           </div>
+
+          <SectorSummary sectors={attribution.sector_attribution} />
 
           {summary && (
             <div className="rounded-lg border border-gray-700 bg-[#161b22] p-4 text-sm text-gray-300">
