@@ -33,6 +33,7 @@ export interface AttributionResponse {
   date: string; // YYYY-MM-DD
   etf_return_pct: number;
   data_as_of: string; // ISO datetime
+  etf_price: number | null;  // ETF close price for the day
   top_negative: ContributorRow[];
   top_positive: ContributorRow[];
   sector_attribution: SectorRow[];
@@ -63,6 +64,8 @@ export interface RangeAttributionResponse {
   start_date: string;   // YYYY-MM-DD
   end_date: string;     // YYYY-MM-DD
   etf_return_pct: number;
+  etf_price_start: number | null;  // ETF close on first trading day in range
+  etf_price_end: number | null;    // ETF close on last trading day in range
   top_negative: ContributorRow[];
   top_positive: ContributorRow[];
   sector_attribution: SectorRow[];

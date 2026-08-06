@@ -36,12 +36,18 @@ function isMarketHours(): boolean {
   return day >= 1 && day <= 5 && totalMinutes >= 9 * 60 + 30 && totalMinutes < 16 * 60;
 }
 
-function toAttributionResponse(r: RangeAttributionResponse): AttributionResponse {
+function toAttributionResponse(r: RangeAttributionResponse): AttributionResponse & {
+  etf_price_start?: number | null;
+  etf_price_end?: number | null;
+} {
   return {
     etf: r.etf,
     date: r.start_date === r.end_date ? r.start_date : `${r.start_date} to ${r.end_date}`,
     etf_return_pct: r.etf_return_pct,
     data_as_of: "",
+    etf_price: r.etf_price_end,       // show end price as "current" price in range mode
+    etf_price_start: r.etf_price_start,
+    etf_price_end: r.etf_price_end,
     top_negative: r.top_negative,
     top_positive: r.top_positive,
     sector_attribution: r.sector_attribution,
@@ -60,7 +66,10 @@ interface Props {
 export default function ETFDashboard({ etfs: _ }: Props) {
   const [etfs, setEtfs] = useState<ETFSummary[]>([]);
   const [selected, setSelected] = useState<string>("QQQ");
-  const [attribution, setAttribution] = useState<AttributionResponse | null>(null);
+  const [attribution, setAttribution] = useState<(AttributionResponse & {
+    etf_price_start?: number | null;
+    etf_price_end?: number | null;
+  }) | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,6 +240,28 @@ export default function ETFDashboard({ etfs: _ }: Props) {
               {attribution.etf_return_pct >= 0 ? "+" : ""}
               {attribution.etf_return_pct.toFixed(2)}%{" "}
               <span className="text-sm font-normal text-gray-500">{returnLabel()}</span>
+            </p>
+          )}
+          {/* ETF price display */}
+          {attribution && !isRangeMode && attribution.etf_price != null && (
+            <p className="text-sm text-gray-400">
+              Price: <span className="text-gray-200 font-medium">${attribution.etf_price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </p>
+          )}
+          {attribution && isRangeMode && (attribution.etf_price_start != null || attribution.etf_price_end != null) && (
+            <p className="text-sm text-gray-400">
+              Price:{" "}
+              <span className="text-gray-200 font-medium">
+                {attribution.etf_price_start != null
+                  ? `$${attribution.etf_price_start.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : "—"}
+              </span>
+              {" → "}
+              <span className="text-gray-200 font-medium">
+                {attribution.etf_price_end != null
+                  ? `$${attribution.etf_price_end.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : "—"}
+              </span>
             </p>
           )}
         </div>

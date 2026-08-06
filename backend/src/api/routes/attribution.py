@@ -40,6 +40,7 @@ class AttributionResponse(BaseModel):
     date: str
     etf_return_pct: float
     data_as_of: Optional[str]
+    etf_price: Optional[float] = None        # ETF close price for the day
     top_negative: list[ContributorRow]
     top_positive: list[ContributorRow]
     sector_attribution: list[SectorRow]
@@ -151,11 +152,20 @@ async def get_attribution(
     etf_row = await db.get(ETF, symbol)
     data_as_of = etf_row.last_holdings_update.isoformat() if etf_row and etf_row.last_holdings_update else None
 
+    # ETF's own price for the trade date
+    etf_price_result = await db.execute(
+        select(DailyPrice.close)
+        .where(DailyPrice.symbol == symbol)
+        .where(DailyPrice.date == trade_date)
+    )
+    etf_price = etf_price_result.scalar_one_or_none()
+
     return AttributionResponse(
         etf=symbol,
         date=str(trade_date),
         etf_return_pct=round(etf_return, 4),
         data_as_of=data_as_of,
+        etf_price=round(etf_price, 2) if etf_price else None,
         top_negative=negatives,
         top_positive=positives,
         sector_attribution=sector_rows,
@@ -283,6 +293,7 @@ async def get_live_attribution(
         date=str(today),
         etf_return_pct=round(etf_return, 4),
         data_as_of=datetime.now(timezone.utc).isoformat(),
+        etf_price=round(prices[symbol][0], 2) if symbol in prices else None,
         top_negative=negatives,
         top_positive=positives,
         sector_attribution=sector_rows,
@@ -323,8 +334,9 @@ class RangeAttributionResponse(BaseModel):
     etf: str
     start_date: str
     end_date: str
-    # Approximate ETF return over the range: sum of cumulative contributions
     etf_return_pct: float
+    etf_price_start: Optional[float] = None  # ETF close on first trading day in range
+    etf_price_end: Optional[float] = None    # ETF close on last trading day in range
     top_negative: list[ContributorRow]
     top_positive: list[ContributorRow]
     sector_attribution: list[SectorRow]
@@ -528,11 +540,38 @@ async def get_range_attribution(
         reverse=True,
     )
 
+    # ETF's own start/end prices for the range
+    etf_bounds_result = await db.execute(
+        select(
+            func.min(DailyPrice.date).label("first_date"),
+            func.max(DailyPrice.date).label("last_date"),
+        )
+        .where(DailyPrice.symbol == symbol)
+        .where(DailyPrice.date >= start)
+        .where(DailyPrice.date <= end)
+    )
+    etf_bounds = etf_bounds_result.one_or_none()
+    etf_price_start: Optional[float] = None
+    etf_price_end: Optional[float] = None
+    if etf_bounds and etf_bounds.first_date and etf_bounds.last_date:
+        etf_prices_result = await db.execute(
+            select(DailyPrice.date, DailyPrice.close)
+            .where(DailyPrice.symbol == symbol)
+            .where(DailyPrice.date.in_([etf_bounds.first_date, etf_bounds.last_date]))
+        )
+        for row in etf_prices_result.all():
+            if row.date == etf_bounds.first_date:
+                etf_price_start = round(row.close, 2)
+            if row.date == etf_bounds.last_date:
+                etf_price_end = round(row.close, 2)
+
     return RangeAttributionResponse(
         etf=symbol,
         start_date=str(start),
         end_date=str(end),
         etf_return_pct=round(etf_return, 4),
+        etf_price_start=etf_price_start,
+        etf_price_end=etf_price_end,
         top_negative=negatives,
         top_positive=positives,
         sector_attribution=sector_rows,
