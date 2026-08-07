@@ -312,18 +312,27 @@ export default function ETFDashboard({ etfs: _ }: Props) {
 
       {attribution && (
         <>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ContributorTable
-              title="Top Negative Contributors"
-              rows={attribution.top_negative}
-              variant="negative"
-            />
-            <ContributorTable
-              title="Top Positive Contributors"
-              rows={attribution.top_positive}
-              variant="positive"
-            />
-          </div>
+          {(() => {
+            const isUp = attribution.etf_return_pct >= 0;
+            const positive = (
+              <ContributorTable
+                key="positive"
+                title="Top Positive Contributors"
+                rows={attribution.top_positive}
+                variant="positive"
+              />
+            );
+            const negative = (
+              <ContributorTable
+                key="negative"
+                title="Top Negative Contributors"
+                rows={attribution.top_negative}
+                variant="negative"
+              />
+            );
+            const tables = isUp ? [positive, negative] : [negative, positive];
+            return <div className="grid gap-6 lg:grid-cols-2">{tables}</div>;
+          })()}
 
           <SectorSummary sectors={attribution.sector_attribution} />
 
